@@ -128,12 +128,18 @@ def fetch_prices(tickers):
     """Un año de precios diarios -> métricas por ticker."""
     out = {}
     for chunk in _chunks(tickers, 80):
-        df = _download(chunk, period="1y", interval="1d")
+        df = _download(chunk, period="1y", interval="1d", actions=True)
         for t in chunk:
             sub = _sub(df, t)
             if sub is None or len(sub) < 30:
                 continue
             close = sub["Close"]
+            split_date = None
+            if "Stock Splits" in sub.columns:
+                sp = sub["Stock Splits"].fillna(0)
+                sp = sp[sp > 0]
+                if len(sp):
+                    split_date = str(sp.index[-1].date())
             last = num(close.iloc[-1])
             if not last:
                 continue
@@ -155,18 +161,27 @@ def fetch_prices(tickers):
                 "chg_1m": chg(21),
                 "above_ma200": (last > ma200) if ma200 else None,
                 "spark": [round(float(x), 2) for x in weekly.tolist() if math.isfinite(float(x))],
+                "split_date": split_date,  # último split del año (para invalidar cachés)
             }
         time.sleep(1)
     return out
 
 
-def update_ath(tickers, today: date):
-    """Máximo histórico: se recalcula completo cada ATH_REFRESH_DAYS; el resto de días se mantiene en caché."""
+def _split_after(splits, t, cached_iso):
+    """True si el ticker ha tenido un split desde que se guardó en caché (los precios viejos ya no son comparables)."""
+    s = (splits or {}).get(t)
+    return bool(s and cached_iso <= s)
+
+
+def update_ath(tickers, today: date, splits=None):
+    """Máximo histórico: se recalcula completo cada ATH_REFRESH_DAYS (o tras un split); si no, se mantiene en caché."""
     path = CACHE / "ath.json"
     cache = load_json(path, {})
     stale = [
         t for t in tickers
-        if t not in cache or (today - date.fromisoformat(cache[t]["d"])).days >= C.ATH_REFRESH_DAYS + zlib.crc32(t.encode()) % 7
+        if t not in cache
+        or (today - date.fromisoformat(cache[t]["d"])).days >= C.ATH_REFRESH_DAYS + zlib.crc32(t.encode()) % 7
+        or _split_after(splits, t, cache[t]["d"])
     ]
     if stale:
         log(f"Máximos históricos: actualizando {len(stale)} tickers")
@@ -281,8 +296,9 @@ def fetch_fundamentals(ticker: str):
     return d
 
 
-def update_fundamentals(tickers, today: date, demo_fetch=None):
-    """Refresca la caché de fundamentales de forma escalonada y con límite de tiempo."""
+def update_fundamentals(tickers, today: date, demo_fetch=None, splits=None):
+    """Refresca la caché de fundamentales de forma escalonada y con límite de tiempo.
+    Tras un split se refresca enseguida: el EPS y el precio objetivo en caché estarían en la escala antigua."""
     path = CACHE / "fundamentals.json"
     cache = load_json(path, {})
     fetch = demo_fetch or fetch_fundamentals
@@ -290,7 +306,9 @@ def update_fundamentals(tickers, today: date, demo_fetch=None):
     def age(t):
         return (today - date.fromisoformat(cache[t]["_d"])).days if t in cache else 10**6
 
-    todo = [t for t in tickers if age(t) >= C.FUND_REFRESH_DAYS + zlib.crc32(t.encode()) % 5]
+    todo = [t for t in tickers
+            if age(t) >= C.FUND_REFRESH_DAYS + zlib.crc32(t.encode()) % 5
+            or (t in cache and _split_after(splits, t, cache[t]["_d"]))]
     todo.sort(key=age, reverse=True)  # primero los que no tienen datos
     log(f"Fundamentales: {len(todo)} tickers por actualizar de {len(tickers)}")
     start, fails_in_a_row, failed = time.time(), 0, []

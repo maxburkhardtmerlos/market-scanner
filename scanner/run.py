@@ -97,8 +97,9 @@ def build(args):
         ip = fetch_prices(list(C.INDICES))
         indices = {k: {"name": n, "price": ip[k]["price"], "chg_1d": ip[k]["chg_1d"],
                        "dd_52w": round(ip[k]["price"] / ip[k]["high_52w"] - 1, 4)} for k, n in C.INDICES.items() if k in ip}
-        ath = update_ath(list(prices), today)
-        fund, failed_fund = update_fundamentals(list(prices), today)
+        splits = {t: p["split_date"] for t, p in prices.items() if p.get("split_date")}
+        ath = update_ath(list(prices), today, splits)
+        fund, failed_fund = update_fundamentals(list(prices), today, splits=splits)
         est_fn = fetch_estimates
 
     stocks = []
