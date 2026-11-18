@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escáner de mercado</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --series:#2a78d6; --series-soft:#cde2fb;
+  --good:#0ca30c; --good-text:#006300; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b; --crit-text:#b02a2a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --series:#3987e5; --series-soft:#184f95;
+    --good-text:#0ca30c; --crit-text:#e66767;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:1280px;margin:0 auto;padding:24px 20px 64px}
+h1{font-size:22px;margin:0}
+h2{font-size:16px;margin:36px 0 4px}
+.sub{color:var(--ink2);margin:2px 0 12px;font-size:13px}
+.muted{color:var(--muted)}
+a{color:inherit}
+.demo{background:var(--warn);color:#0b0b0b;padding:10px 14px;border-radius:8px;margin-bottom:16px;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+.tile .lbl{color:var(--ink2);font-size:12px}
+.tile .val{font-size:22px;font-weight:600;margin:2px 0}
+.tile .note{font-size:12px;color:var(--ink2)}
+.up{color:var(--good-text)} .down{color:var(--crit-text)}
+.alerts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px}
+.acard header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.acard .tk{font-size:17px;font-weight:700}
+.acard .nm{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acard .px{font-size:15px;font-weight:600;white-space:nowrap}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:10px 0 8px;font-size:13px}
+.kv div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--grid);padding:2px 0}
+.kv span:first-child{color:var(--ink2)}
+.kv span,.kv b,.acard .px,.acard header span{white-space:nowrap}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--ink);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.links{font-size:12px;margin-top:8px;display:flex;gap:12px}
+.spark{display:block;width:100%;height:44px;margin-top:6px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px}
+.two section{min-width:0}
+#traps,#earnings{overflow:auto}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+th{font-size:12px;color:var(--ink2);font-weight:600;position:sticky;top:0;background:var(--surface);cursor:pointer;user-select:none}
+th[aria-sort]{color:var(--ink)}
+tbody tr:hover{background:color-mix(in srgb,var(--series) 7%,transparent)}
+.tablewrap{overflow:auto;max-height:75vh;padding:0}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+select,input[type=search]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:7px;padding:6px 9px}
+label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2)}
+.bars{display:grid;grid-template-columns:max-content minmax(40px,1fr) max-content;font-size:13px;gap:6px 10px;align-items:center}
+.bars .bar{height:14px;background:var(--series);border-radius:0 4px 4px 0;min-width:2px}
+.bars .row{display:contents}
+.bars .track{position:relative}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--page);padding:6px 9px;border-radius:6px;font-size:12px;z-index:9;display:none;max-width:260px}
+footer{margin-top:40px;color:var(--ink2);font-size:12.5px}
+footer li{margin:3px 0}
+.empty{color:var(--ink2);padding:8px 0}
+</style>
+</head>
+<body>
+<main>
+  <div id="demo" class="demo" hidden>DATOS DE DEMOSTRACIÓN — cifras inventadas para probar el diseño. Desaparece tras el primer escaneo real.</div>
+  <h1>Escáner de mercado</h1>
+  <div class="sub" id="stamp">Cargando…</div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Alertas: calidad en rebajas</h2>
+  <div class="sub" id="alertsub"></div>
+  <div class="alerts" id="alerts"></div>
+
+  <div class="two">
+    <section>
+      <h2>Caídas con estimaciones a la baja</h2>
+      <div class="sub">Buen negocio y fuerte caída, pero los analistas están recortando beneficios: posible trampa de valor.</div>
+      <div class="card" id="traps"></div>
+    </section>
+    <section>
+      <h2>Próximos resultados</h2>
+      <div class="sub" id="earnsub"></div>
+      <div class="card" id="earnings"></div>
+    </section>
+  </div>
+
+  <h2>Sectores: caída mediana desde el máximo de 52 semanas</h2>
+  <div class="sub">Cuanto más larga la barra, más castigado está el sector. A la derecha, el P/E forward mediano.</div>
+  <div class="card"><div class="bars" id="sectors"></div></div>
+
+  <h2>Todas las acciones</h2>
+  <div class="filters">
+    <input type="search" id="q" placeholder="Buscar ticker o nombre" aria-label="Buscar">
+    <select id="fregion" aria-label="Región"><option value="">Todas las regiones</option><option value="US">EE. UU.</option><option value="DE">Alemania</option></select>
+    <select id="fsector" aria-label="Sector"><option value="">Todos los sectores</option></select>
+    <select id="fcat" aria-label="Categoría">
+      <option value="">Todas las categorías</option><option value="alerta">Alerta</option><option value="vigilar">Vigilar</option>
+      <option value="deterioro">Estimaciones a la baja</option><option value="calidad">Calidad (sin caída)</option><option value="resto">Resto</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="fq"> Solo calidad suficiente</label>
+    <span class="muted" id="count" style="align-self:center"></span>
+  </div>
+  <div class="card tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+
+  <footer id="foot"></footer>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const SECT = {"Technology":"Tecnología","Healthcare":"Salud","Financial Services":"Finanzas","Consumer Cyclical":"Consumo cíclico",
+  "Industrials":"Industria","Consumer Defensive":"Consumo defensivo","Energy":"Energía","Utilities":"Utilities",
+  "Basic Materials":"Materiales","Real Estate":"Inmobiliario","Communication Services":"Comunicación"};
+const CAT = {alerta:["Alerta","var(--good)"],vigilar:["Vigilar","var(--warn)"],deterioro:["Estimaciones a la baja","var(--crit)"],
+  calidad:["Calidad","var(--series)"],resto:["Resto","var(--muted)"]};
+const CATORDER = {alerta:0,deterioro:1,vigilar:2,calidad:3,resto:4};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nf = (d=0) => new Intl.NumberFormat("es-ES",{minimumFractionDigits:d,maximumFractionDigits:d});
+const num = (x,d=1) => x==null ? "–" : nf(d).format(x);
+const pct = (x,d=1) => x==null ? "–" : nf(d).format(x*100).replace("-","−")+" %";
+const delta = (x,d=1) => x==null ? "–" : `<span class="${x>=0?"up":"down"}">${x>=0?"▲":"▼"} ${nf(d).format(Math.abs(x*100))} %</span>`;
+const sect = s => SECT[s] || s || "–";
+const fdate = iso => iso ? new Date(iso+"T00:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short"}) : "–";
+const money = (x,c) => x==null ? "–" : nf(2).format(x)+" "+(c==="EUR"?"€":c==="USD"?"$":(c||""));
+const badge = (txt,color) => `<span class="badge">${color?`<span class="dot" style="background:${color}"></span>`:""}${esc(txt)}</span>`;
+const catBadge = c => badge(CAT[c][0], CAT[c][1]);
+const yahoo = t => `https://finance.yahoo.com/quote/${encodeURIComponent(t)}`;
+const news = s => `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(s.name+" "+(s.region==="DE"?"Aktie":"stock"))}`;
+
+function spark(vals){
+  if(!vals || vals.length<3) return "";
+  const w=280,h=44,p=3,min=Math.min(...vals),max=Math.max(...vals),r=(max-min)||1;
+  const pts=vals.map((v,i)=>[p+i*(w-2*p)/(vals.length-1), h-p-(v-min)*(h-2*p)/r]);
+  const [lx,ly]=pts[pts.length-1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Precio, último año"><title>Precio semanal, último año (mín ${num(min,2)} · máx ${num(max,2)})</title>
+    <polyline fill="none" stroke="var(--series)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" points="${pts.map(q=>q.map(n=>n.toFixed(1)).join(",")).join(" ")}"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3" fill="var(--series)" stroke="var(--surface)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function tiles(d){
+  const out=[];
+  for(const [k,v] of Object.entries(d.indices||{})){
+    out.push(`<div class="card tile"><div class="lbl">${esc(v.name)}</div><div class="val">${num(v.price,k==="^VIX"?1:0)}</div>
+      <div class="note">${delta(v.chg_1d,2)}${k==="^VIX"?"":` · ${pct(v.dd_52w)} vs máx. 52 s`}</div></div>`);
+  }
+  for(const [reg,lbl] of [["US","EE. UU."],["DE","Alemania"]]){
+    const b=(d.breadth||{})[reg]; if(!b) continue;
+    out.push(`<div class="card tile"><div class="lbl">${lbl}: sobre su media de 200 días</div><div class="val">${pct(b.above_ma200,0)}</div>
+      <div class="note">${pct(b.down_25,0)} cae ≥ ${Math.round(d.config.DRAWDOWN_ALERT*100)} % desde máximos · ${b.n} acciones</div></div>`);
+  }
+  $("tiles").innerHTML=out.join("");
+}
+
+function alertCard(s,cfg){
+  const b=[];
+  if(s.alert_new) b.push(badge("Nueva hoy","var(--good)"));
+  else if(s.alert_since) b.push(badge("En alerta desde "+fdate(s.alert_since)));
+  if(s.flags.includes("resultados_cerca")) b.push(badge(`⚠ Resultados en ${s.days_to_earnings} días`,"var(--warn)"));
+  if(s.flags.includes("estimaciones_sin_dato")) b.push(badge("⚠ Sin dato de estimaciones","var(--warn)"));
+  if(s.flags.includes("pe_bajo_20")) b.push(badge(`P/E < ${cfg.PE_ABS_CHEAP}`));
+  return `<article class="card acard">
+    <header><div style="min-width:0"><div class="tk">${esc(s.ticker)}</div><div class="nm">${esc(s.name)} · ${esc(sect(s.sector))}</div></div>
+      <div style="text-align:right"><div class="px">${money(s.price,s.currency)}</div><div>${delta(s.chg_1d,2)}</div></div></header>
+    ${spark(s.spark)}
+    <div class="kv">
+      <div><span>Máx. 52 s</span><b>${pct(s.dd_52w)}</b></div>
+      <div><span>Máx. histórico</span><b>${pct(s.dd_ath)}</b></div>
+      <div><span>P/E fwd</span><b>${num(s.fwd_pe)}</b></div>
+      <div><span>P/E sector</span><b>${num(s.sector_pe)}</b></div>
+      <div><span>Calidad</span><b>${num(s.quality,0)}/100</b></div>
+      <div><span>Valoración</span><b>${num(s.valuation,0)}/100</b></div>
+      <div><span>EPS 90 d</span><b>${delta(s.eps_rev_90d)}</b></div>
+      <div><span>Resultados</span><b>${fdate(s.earnings_date)}</b></div>
+    </div>
+    <div class="badges">${b.join("")}</div>
+    <div class="links"><a href="${news(s)}" target="_blank" rel="noopener">¿Por qué ha caído? Noticias ↗</a><a href="${yahoo(s.ticker)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></div>
+  </article>`;
+}
+
+function miniTable(rows,cols){
+  if(!rows.length) return `<div class="empty">Nada que mostrar hoy.</div>`;
+  return `<table><thead><tr>${cols.map(c=>`<th class="${c.l?"l":""}" style="cursor:default;position:static">${c.h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(s=>`<tr>${cols.map(c=>`<td class="${c.l?"l":""}">${c.f(s)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function sectors(d){
+  const rows=d.sectors||[]; const max=Math.max(...rows.map(r=>-r.median_dd_52w),0.01);
+  $("sectors").innerHTML=rows.map(r=>`<div class="row" data-tip="${esc(sect(r.sector))}: caída mediana ${pct(r.median_dd_52w)} · ${r.n} acciones · ${r.alerts} alertas">
+    <div>${esc(sect(r.sector))}</div>
+    <div class="track"><div class="bar" style="width:${(-r.median_dd_52w/max*100).toFixed(1)}%"></div></div>
+    <div><b>${pct(r.median_dd_52w)}</b> <span class="muted">· P/E ${num(r.median_fwd_pe)}</span></div></div>`).join("");
+  const tip=$("tip");
+  $("sectors").addEventListener("mousemove",e=>{const r=e.target.closest("[data-tip]")||e.target.parentElement.closest("[data-tip]");
+    if(!r){tip.style.display="none";return;} tip.textContent=r.dataset.tip; tip.style.display="block";
+    tip.style.left=Math.min(e.clientX+12,innerWidth-270)+"px"; tip.style.top=(e.clientY+14)+"px";});
+  $("sectors").addEventListener("mouseleave",()=>tip.style.display="none");
+}
+
+const COLS=[
+  {k:"ticker",h:"Acción",l:1,f:s=>`<a href="${yahoo(s.ticker)}" target="_blank" rel="noopener"><b>${esc(s.ticker)}</b></a> <span class="muted">${esc((s.name||"").slice(0,26))}</span>`},
+  {k:"sector",h:"Sector",l:1,f:s=>esc(sect(s.sector))},
+  {k:"category",h:"Categoría",l:1,f:s=>catBadge(s.category),v:s=>CATORDER[s.category]},
+  {k:"price",h:"Precio",f:s=>money(s.price,s.currency)},
+  {k:"chg_1d",h:"1 día",f:s=>delta(s.chg_1d,2)},
+  {k:"chg_1m",h:"1 mes",f:s=>delta(s.chg_1m)},
+  {k:"dd_52w",h:"vs máx. 52 s",f:s=>pct(s.dd_52w)},
+  {k:"dd_ath",h:"vs máx. hist.",f:s=>pct(s.dd_ath)},
+  {k:"fwd_pe",h:"P/E fwd",f:s=>num(s.fwd_pe)},
+  {k:"sector_pe",h:"P/E sector",f:s=>num(s.sector_pe)},
+  {k:"fcf_yield",h:"FCF yield",f:s=>pct(s.fcf_yield)},
+  {k:"quality",h:"Calidad",f:s=>num(s.quality,0)},
+  {k:"valuation",h:"Valoración",f:s=>num(s.valuation,0)},
+  {k:"eps_rev_90d",h:"EPS est. 90 d",f:s=>delta(s.eps_rev_90d)},
+  {k:"days_to_earnings",h:"Resultados",f:s=>s.earnings_date?`${fdate(s.earnings_date)}${s.flags.includes("resultados_cerca")?" ⚠":""}`:"–"},
+];
+let DATA, sortK="category", sortDir=1;
+
+function table(){
+  const q=$("q").value.trim().toLowerCase(), reg=$("fregion").value, sec=$("fsector").value, cat=$("fcat").value, fq=$("fq").checked;
+  let rows=DATA.stocks.filter(s=>(!q||s.ticker.toLowerCase().includes(q)||(s.name||"").toLowerCase().includes(q))
+    &&(!reg||s.region===reg)&&(!sec||s.sector===sec)&&(!cat||s.category===cat)&&(!fq||(s.quality!=null&&s.quality>=DATA.config.QUALITY_MIN)));
+  const col=COLS.find(c=>c.k===sortK), val=col.v||(s=>s[sortK]);
+  rows.sort((a,b)=>{const x=val(a),y=val(b);
+    if(x==null&&y==null) return 0; if(x==null) return 1; if(y==null) return -1;
+    const c=typeof x==="string"?x.localeCompare(y):x-y;
+    return c*sortDir || (a.dd_52w-b.dd_52w);});
+  $("tbl").tHead.innerHTML="<tr>"+COLS.map(c=>`<th class="${c.l?"l":""}" data-k="${c.k}" ${c.k===sortK?`aria-sort="${sortDir>0?"ascending":"descending"}"`:""}>${c.h}${c.k===sortK?(sortDir>0?" ↑":" ↓"):""}</th>`).join("")+"</tr>";
+  $("tbl").tBodies[0].innerHTML=rows.map(s=>"<tr>"+COLS.map(c=>`<td class="${c.l?"l":""}">${c.f(s)}</td>`).join("")+"</tr>").join("");
+  $("count").textContent=`${rows.length} de ${DATA.stocks.length}`;
+}
+
+function render(d){
+  DATA=d; const cfg=d.config;
+  $("demo").hidden=!d.demo;
+  const pd=d.stocks.map(s=>s.price_date).sort().pop();
+  $("stamp").textContent=`Cierre del ${new Date(pd+"T00:00:00").toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · generado el ${new Date(d.generated_at).toLocaleString("es-ES",{dateStyle:"medium",timeStyle:"short"})}`;
+  tiles(d);
+
+  const al=d.stocks.filter(s=>s.category==="alerta").sort((a,b)=>(b.alert_new?1:0)-(a.alert_new?1:0)||(b.quality+b.valuation)-(a.quality+a.valuation));
+  $("alertsub").textContent=`${al.length} ${al.length===1?"acción cumple":"acciones cumplen"} todo: calidad ≥ ${cfg.QUALITY_MIN}, valoración ≥ ${cfg.VALUATION_MIN}, caída ≥ ${Math.round(cfg.DRAWDOWN_ALERT*100)} % desde el máximo de 52 semanas y estimaciones de beneficio estables. Ordenadas por calidad + valoración.`;
+  $("alerts").innerHTML=al.length?al.map(s=>alertCard(s,cfg)).join(""):`<div class="card empty">Hoy ninguna acción cumple todos los criterios. Mira la categoría «Vigilar» en la tabla.</div>`;
+
+  const tr=d.stocks.filter(s=>s.category==="deterioro").sort((a,b)=>a.eps_rev_90d-b.eps_rev_90d);
+  $("traps").innerHTML=miniTable(tr,[{h:"Acción",l:1,f:s=>`<a href="${yahoo(s.ticker)}" target="_blank" rel="noopener"><b>${esc(s.ticker)}</b></a> <span class="muted">${esc((s.name||"").slice(0,22))}</span>`},
+    {h:"vs máx. 52 s",f:s=>pct(s.dd_52w)},{h:"EPS est. 90 d",f:s=>delta(s.eps_rev_90d)},{h:"P/E fwd",f:s=>num(s.fwd_pe)}]);
+
+  const ea=d.stocks.filter(s=>s.days_to_earnings!=null&&s.days_to_earnings<=cfg.EARNINGS_WINDOW_DAYS&&["alerta","vigilar","deterioro"].includes(s.category))
+    .sort((a,b)=>a.days_to_earnings-b.days_to_earnings);
+  $("earnsub").textContent=`Alertas y vigiladas que publican en los próximos ${cfg.EARNINGS_WINDOW_DAYS} días. Para swing, mejor no entrar justo antes.`;
+  $("earnings").innerHTML=miniTable(ea,[{h:"Fecha",l:1,f:s=>fdate(s.earnings_date)},{h:"Acción",l:1,f:s=>`<b>${esc(s.ticker)}</b> <span class="muted">${esc((s.name||"").slice(0,22))}</span>`},
+    {h:"Categoría",l:1,f:s=>catBadge(s.category)},{h:"Faltan",f:s=>s.days_to_earnings+" d"}]);
+
+  sectors(d);
+  const secs=[...new Set(d.stocks.map(s=>s.sector).filter(Boolean))].sort((a,b)=>sect(a).localeCompare(sect(b)));
+  $("fsector").insertAdjacentHTML("beforeend",secs.map(s=>`<option value="${esc(s)}">${esc(sect(s))}</option>`).join(""));
+  table();
+
+  const c=d.coverage;
+  $("foot").innerHTML=`<b>Cómo leerlo</b><ul>
+    <li><b>Calidad (0–100):</b> crecimiento de ingresos y beneficio a 3 años, margen operativo y su tendencia, rentabilidad sobre el capital, margen de caja libre, deuda neta/EBITDA y margen neto.</li>
+    <li><b>Valoración (0–100):</b> P/E forward frente a la mediana de su sector (50 %), FCF yield (30 %) y PEG (20 %). 100 = muy barata.</li>
+    <li><b>EPS est. 90 d:</b> cuánto han movido los analistas el beneficio por acción esperado en 90 días. Si el precio cae y esto no, la caída no viene del negocio.</li>
+    <li>Cobertura: ${c.with_prices} de ${c.universe} acciones con precio, ${c.with_fundamentals} con fundamentales.${c.no_price.length?` Sin datos: ${esc(c.no_price.join(", "))}.`:""}</li>
+    <li>Fuente: Yahoo Finance (datos gratuitos, pueden contener errores). Es un filtro para generar ideas, no una recomendación de compra.</li></ul>`;
+}
+
+for(const id of ["q","fregion","fsector","fcat","fq"]) $(id).addEventListener("input",table);
+$("tbl").tHead.addEventListener("click",e=>{const th=e.target.closest("th"); if(!th) return;
+  const k=th.dataset.k; if(k===sortK) sortDir=-sortDir; else {sortK=k; sortDir=["ticker","sector","category","dd_52w","dd_ath","fwd_pe","days_to_earnings"].includes(k)?1:-1;} table();});
+fetch("data/latest.json?t="+Date.now()).then(r=>{if(!r.ok) throw new Error(r.status); return r.json();}).then(render)
+  .catch(e=>{$("stamp").textContent="No se han podido cargar los datos (data/latest.json): "+e.message;});
+</script>
+</body>
+</html>

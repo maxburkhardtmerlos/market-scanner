@@ -1,0 +1,60 @@
+name: Escaneo diario
+
+on:
+  schedule:
+    # Martes a sábado, 05:17 UTC (06:17 en Berlín en invierno, 07:17 en verano):
+    # justo después de cada sesión de EE. UU. y antes de que abra Xetra.
+    - cron: "17 5 * * 2-6"
+  workflow_dispatch:        # botón "Run workflow" para lanzarlo a mano
+  push:
+    branches: [main]
+    paths: ["docs/**"]      # si cambias el diseño, se vuelve a publicar (sin escanear)
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: escaneo
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        if: github.event_name != 'push'
+        run: pip install -r requirements.txt
+
+      - name: Escanear el mercado
+        if: github.event_name != 'push'
+        run: python -m scanner.run
+
+      - name: Guardar datos en el repositorio
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "market-scanner-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data cache universe/sp500.csv
+          git diff --cached --quiet || git commit -m "Escaneo $(date -u +%F)"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
